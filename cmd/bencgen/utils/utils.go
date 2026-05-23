@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/deneonet/benc/cmd/bencgen/parser"
+	"github.com/alvarolm/benc/cmd/bencgen/parser"
 )
 
 func ToUpper(s string) string {

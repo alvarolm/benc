@@ -4,10 +4,9 @@
 package others
 
 import (
-	"github.com/deneonet/benc/impl/gen"
-	"github.com/deneonet/benc/std"
-
-	"github.com/deneonet/benc/testing/person"
+	bgenimpl "github.com/alvarolm/benc/impl/gen"
+	bstd "github.com/alvarolm/benc/std"
+	"github.com/alvarolm/benc/testing/person"
 )
 
 // Enum - ExampleEnum

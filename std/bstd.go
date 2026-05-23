@@ -6,8 +6,7 @@ import (
 	"strconv"
 	"unsafe"
 
-	"github.com/deneonet/benc"
-	"golang.org/x/exp/constraints"
+	"github.com/alvarolm/benc"
 )
 
 type SizeFunc[T any] func(t T) int
@@ -1013,16 +1012,32 @@ func UnmarshalBool(n int, b []byte) (int, bool, error) {
 	return n + 1, uint8(b[n]) == 1, nil
 }
 
-func encodeZigZag[T constraints.Signed](t T) T {
+func encodeZigZag[T Signed](t T) T {
 	if t < 0 {
 		return ^(t << 1)
 	}
 	return t << 1
 }
 
-func decodeZigZag[T constraints.Unsigned](t T) T {
+func decodeZigZag[T Unsigned](t T) T {
 	if t&1 == 1 {
 		return ^(t >> 1)
 	}
 	return t >> 1
+}
+
+// taken from exp/constraints:
+
+// Signed is a constraint that permits any signed integer type.
+// If future releases of Go add new predeclared signed integer types,
+// this constraint will be modified to include them.
+type Signed interface {
+	~int | ~int8 | ~int16 | ~int32 | ~int64
+}
+
+// Unsigned is a constraint that permits any unsigned integer type.
+// If future releases of Go add new predeclared unsigned integer types,
+// this constraint will be modified to include them.
+type Unsigned interface {
+	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
 }

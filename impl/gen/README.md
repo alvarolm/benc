@@ -7,7 +7,7 @@ The implementation for [bencgen](../../cmd/bencgen/README.md). Contains various 
 ## Installation
 
 ```bash
-go get github.com/deneonet/benc/impl/gen
+go get github.com/alvarolm/benc/impl/gen
 ```
 
 ## Tests

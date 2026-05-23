@@ -4,7 +4,7 @@ The Benc standard provides a suite of methods for raw sizing, skipping, marshall
 
 ## Installation
 ```bash
-go get github.com/deneonet/benc/std
+go get github.com/alvarolm/benc/std
 ```
 
 ## Tests
@@ -31,7 +31,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/deneonet/benc/std"
+	"github.com/alvarolm/benc/std"
 )
 
 func main() {
@@ -71,7 +71,7 @@ import (
 	"fmt"
 	"reflect"
 
-	bstd "github.com/deneonet/benc/std"
+	bstd "github.com/alvarolm/benc/std"
 )
 
 func main() {

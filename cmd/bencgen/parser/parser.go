@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/deneonet/benc/cmd/bencgen/lexer"
+	"github.com/alvarolm/benc/cmd/bencgen/lexer"
 )
 
 type Parser struct {

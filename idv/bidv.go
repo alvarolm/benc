@@ -3,7 +3,7 @@ package bidv
 import (
 	"fmt"
 
-	bstd "github.com/deneonet/benc/std"
+	bstd "github.com/alvarolm/benc/std"
 )
 
 const (

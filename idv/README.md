@@ -4,7 +4,7 @@ The Benc ID Validation (Benc IDV) provides a suite of methods for prefixing Benc
 
 ## Installation
 ```bash
-go get github.com/deneonet/benc/idv
+go get github.com/alvarolm/benc/idv
 ```
 
 ## Tests
@@ -29,8 +29,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/deneonet/benc/idv"
-	"github.com/deneonet/benc/std"
+	"github.com/alvarolm/benc/idv"
+	"github.com/alvarolm/benc/std"
 )
 
 func main() {

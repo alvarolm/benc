@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/deneonet/benc/testing/person"
+	"github.com/alvarolm/benc/testing/person"
 )
 
 func TestUint(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/deneonet/benc"
-	bstd "github.com/deneonet/benc/std"
+	"github.com/alvarolm/benc"
+	bstd "github.com/alvarolm/benc/std"
 )
 
 var ErrEof = errors.New("reached end of decoding")

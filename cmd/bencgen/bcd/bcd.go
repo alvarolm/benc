@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
-	"github.com/deneonet/benc/cmd/bencgen/parser"
-	"github.com/deneonet/benc/cmd/bencgen/utils"
-	"golang.org/x/exp/slices"
+	"github.com/alvarolm/benc/cmd/bencgen/parser"
+	"github.com/alvarolm/benc/cmd/bencgen/utils"
 )
 
 type Msgs struct {
@@ -89,6 +89,7 @@ func (b *Bcd) buildMsgs(existingMsgs Msgs, force bool) Msgs {
 }
 
 func (b *Bcd) checkForConflicts(existingMsg Msg, stmt *parser.ContainerStmt, fields map[uint16]parser.Field) {
+
 	for _, existingField := range existingMsg.Fields {
 		currentField, exists := fields[existingField.ID]
 		if !exists && !slices.Contains(stmt.ReservedIDs, existingField.ID) {

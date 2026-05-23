@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deneonet/benc"
-	bstd "github.com/deneonet/benc/std"
+	"github.com/alvarolm/benc"
+	bstd "github.com/alvarolm/benc/std"
 )
 
 type Test struct {

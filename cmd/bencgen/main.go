@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deneonet/benc/cmd/bencgen/bcd"
-	"github.com/deneonet/benc/cmd/bencgen/codegens"
-	"github.com/deneonet/benc/cmd/bencgen/parser"
+	"github.com/alvarolm/benc/cmd/bencgen/bcd"
+	"github.com/alvarolm/benc/cmd/bencgen/codegens"
+	"github.com/alvarolm/benc/cmd/bencgen/parser"
 )
 
 var iFlag = flag.String("in", "", "comma-separated list of input .benc files")
@@ -71,7 +71,7 @@ func processFile(inputFile string, outputDir string, filenamePattern string, lan
 
 func main() {
 	flag.Usage = func() {
-		fmt.Println("Usage for bencgen available here: https://github.com/deneonet/benc/tree/main/cmd/bencgen#usage")
+		fmt.Println("Usage for bencgen available here: https://github.com/alvarolm/benc/tree/main/cmd/bencgen#usage")
 	}
 	flag.Parse()
 

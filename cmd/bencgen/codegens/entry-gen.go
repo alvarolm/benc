@@ -5,8 +5,8 @@ import (
 	"os"
 	"slices"
 
-	"github.com/deneonet/benc/cmd/bencgen/parser"
-	"github.com/deneonet/benc/cmd/bencgen/utils"
+	"github.com/alvarolm/benc/cmd/bencgen/parser"
+	"github.com/alvarolm/benc/cmd/bencgen/utils"
 )
 
 type GenLang string

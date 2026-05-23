@@ -3,7 +3,7 @@ define others;
 use "person.benc";
 use "person2.benc";
 
-var go_package = "github.com/deneonet/benc/testing/others";
+var go_package = "github.com/alvarolm/benc/testing/others";
 
 enum ExampleEnum {
     One,

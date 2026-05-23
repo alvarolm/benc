@@ -35,7 +35,7 @@ A code generator for the **Benc** schema format, ensuring forward and backward c
 1. Install `bencgen` using the following command:
 
    ```bash
-   go install github.com/deneonet/benc/cmd/bencgen
+   go install github.com/alvarolm/benc/cmd/bencgen
    ```
 
 ## Usage
@@ -105,7 +105,7 @@ After generating the code, a file called `output/person/person.go` will be creat
 package main
 
 import (
-	"github.com/deneonet/benc"
+	"github.com/alvarolm/benc"
 	"github.com/.../output/person"
 )
 

@@ -4,8 +4,8 @@
 package person
 
 import (
-	"github.com/deneonet/benc/impl/gen"
-	"github.com/deneonet/benc/std"
+	bgenimpl "github.com/alvarolm/benc/impl/gen"
+	bstd "github.com/alvarolm/benc/std"
 )
 
 // Struct - Person2

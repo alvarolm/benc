@@ -1,8 +1,9 @@
-# Benc
+# Benc fork
 
-![go workflow](https://github.com/deneonet/benc/actions/workflows/go.yml/badge.svg)
-[![go report card](https://goreportcard.com/badge/github.com/deneonet/benc)](https://goreportcard.com/report/github.com/deneonet/benc)
-[![go reference](https://pkg.go.dev/badge/github.com/deneonet/benc.svg)](https://pkg.go.dev/github.com/deneonet/benc)
+*fork of https://github.com/deneonet/benc*
+
+[![go report card](https://goreportcard.com/badge/github.com/alvarolm/benc)](https://goreportcard.com/report/github.com/alvarolm/benc)
+[![go reference](https://pkg.go.dev/badge/github.com/alvarolm/benc.svg)](https://pkg.go.dev/github.com/alvarolm/benc)
 [![codecov](https://codecov.io/gh/deneonet/benc/graph/badge.svg?token=gOyCwY04Uo)](https://codecov.io/gh/deneonet/benc)
 
 The fastest serializer in pure Golang, with the option for backward/forward compatibile generated code.

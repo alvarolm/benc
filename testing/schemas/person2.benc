@@ -1,6 +1,6 @@
 define person.2.test.defines;
 
-var go_package = "github.com/deneonet/benc/testing/person";
+var go_package = "github.com/alvarolm/benc/testing/person";
 
 ctr Person2 {
     reserved 3;

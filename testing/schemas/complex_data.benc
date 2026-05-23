@@ -1,6 +1,6 @@
 define complex_data;
 
-var go_package = "github.com/deneonet/benc/testing/complex_data";
+var go_package = "github.com/alvarolm/benc/testing/complex_data";
 
 ctr ComplexData {
     int id = 1;

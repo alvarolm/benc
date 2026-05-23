@@ -2,15 +2,15 @@ package codegens
 
 import (
 	"fmt"
+	//"maps"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
-	"github.com/deneonet/benc/cmd/bencgen/lexer"
-	"github.com/deneonet/benc/cmd/bencgen/parser"
-	"github.com/deneonet/benc/cmd/bencgen/utils"
-	"golang.org/x/exp/maps"
+	"github.com/alvarolm/benc/cmd/bencgen/lexer"
+	"github.com/alvarolm/benc/cmd/bencgen/parser"
+	"github.com/alvarolm/benc/cmd/bencgen/utils"
 )
 
 type GoContainerStmt struct {
@@ -43,6 +43,7 @@ type GoField struct {
 }
 
 func (f *GoField) AppendUnsafeIfPresent() string {
+
 	return f.Type.AppendUnsafeIfPresent()
 }
 
@@ -247,17 +248,17 @@ func (g *GoGen) ProcessImport(stmt *parser.UseStmt, importDirs []string) ([]stri
 		importedContainers[definePackage+"."+container] = packageAlias + "." + container
 	}
 
-	g.enumDecls = append(g.enumDecls, maps.Values(importedEnums)...)
-	g.containerDecls = append(g.containerDecls, maps.Values(importedContainers)...)
+	g.enumDecls = append(g.enumDecls, MapValues(importedEnums)...)
+	g.containerDecls = append(g.containerDecls, MapValues(importedContainers)...)
 
 	if !slices.Contains(g.importedPackages, goPackage) {
 		g.importedPackages = append(g.importedPackages, goPackage)
 	}
 
-	maps.Copy(g.importedEnumsOrContainers, importedEnums)
-	maps.Copy(g.importedEnumsOrContainers, importedContainers)
+	MapCopy(g.importedEnumsOrContainers, importedEnums)
+	MapCopy(g.importedEnumsOrContainers, importedContainers)
 
-	return maps.Keys(importedEnums), maps.Keys(importedContainers)
+	return MapKeys(importedEnums), MapKeys(importedContainers)
 }
 
 func (g *GoGen) joinImportedPackages() string {
@@ -290,8 +291,8 @@ func (g *GoGen) GenDefine() string {
 		`package %s
 
 import (
-    "github.com/deneonet/benc/std"
-    "github.com/deneonet/benc/impl/gen"
+    "github.com/alvarolm/benc/std"
+    "github.com/alvarolm/benc/impl/gen"
 
 %s
 )
@@ -683,4 +684,46 @@ func (g *GoGen) GenUnmarshalPlain() string {
 
 	sb.WriteString("    return\n}\n\n")
 	return sb.String()
+}
+
+// taken from exp/maps
+
+// Values returns the values of the map m.
+// The values will be in an indeterminate order.
+//
+// The simplest true equivalent using the standard library is:
+//
+//	slices.AppendSeq(make([]V, 0, len(m)), MapValues(m))
+func MapValues[M ~map[K]V, K comparable, V any](m M) []V {
+
+	r := make([]V, 0, len(m))
+	for _, v := range m {
+		r = append(r, v)
+	}
+	return r
+}
+
+// Copy copies all key/value pairs in src adding them to dst.
+// When a key in src is already present in dst,
+// the value in dst will be overwritten by the value associated
+// with the key in src.
+//
+//go:fix inline
+func MapCopy[M1 ~map[K]V, M2 ~map[K]V, K comparable, V any](dst M1, src M2) {
+	MapCopy(dst, src)
+}
+
+// Keys returns the keys of the map m.
+// The keys will be in an indeterminate order.
+//
+// The simplest true equivalent using the standard library  is:
+//
+//	slices.AppendSeq(make([]K, 0, len(m)), maps.Keys(m))
+func MapKeys[M ~map[K]V, K comparable, V any](m M) []K {
+
+	r := make([]K, 0, len(m))
+	for k := range m {
+		r = append(r, k)
+	}
+	return r
 }

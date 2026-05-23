@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/deneonet/benc"
-	bstd "github.com/deneonet/benc/std"
+	"github.com/alvarolm/benc"
+	bstd "github.com/alvarolm/benc/std"
 )
 
 func TestTags(t *testing.T) {
