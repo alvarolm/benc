@@ -6,6 +6,7 @@ import (
 )
 
 var ErrBufTooSmall = errors.New("buffer too small")
+var ErrInvalidSize = errors.New("fixed array length mismatch")
 var ErrReuseBufTooSmall = errors.New("reuse buffer too small")
 var ErrOverflow = errors.New("varint overflows a 64-bit integer")
 var ErrVerifyUnmarshal = errors.New("check for a mistake in the unmarshal process")

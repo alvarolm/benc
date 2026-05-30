@@ -484,13 +484,17 @@ func (g *GoGen) getSizeFunc() string {
 
 	switch {
 	case field.Type.IsArray:
+		acc := fmt.Sprintf("%s.%s", ctr.PrivateName, field.PublicName)
+		if field.Type.IsFixedArray() {
+			acc += "[:]"
+		}
 		if field.Type.ChildType.IsCustom || field.Type.ChildType.TokenType == lexer.STRING || field.Type.ChildType.TokenType == lexer.BYTES || field.Type.ChildType.IsAnExternalStructure() || field.Type.ChildType.IsMap || field.Type.ChildType.IsArray {
-			return fmt.Sprintf("bstd.SizeSlice(%s.%s, %s)",
-				ctr.PrivateName, field.PublicName, g.getElemSizeFunc(field.Type.ChildType))
+			return fmt.Sprintf("bstd.SizeSlice(%s, %s)",
+				acc, g.getElemSizeFunc(field.Type.ChildType))
 		}
 
-		return fmt.Sprintf("bstd.SizeFixedSlice(%s.%s, %s())",
-			ctr.PrivateName, field.PublicName, g.getElemSizeFunc(field.Type.ChildType))
+		return fmt.Sprintf("bstd.SizeFixedSlice(%s, %s())",
+			acc, g.getElemSizeFunc(field.Type.ChildType))
 	case field.Type.IsMap:
 		return fmt.Sprintf("bstd.SizeMap(%s.%s, %s, %s)",
 			ctr.PrivateName, field.PublicName, g.getElemSizeFunc(field.Type.MapKeyType), g.getElemSizeFunc(field.Type.ChildType))
@@ -531,13 +535,17 @@ func makeExternalStructureUpperOrNot(externalStructure string) string {
 func (g *GoGen) getElemSizeFunc(t *parser.Type) string {
 	switch {
 	case t.IsArray:
+		elem := "s"
+		if t.IsFixedArray() {
+			elem = "s[:]"
+		}
 		if t.ChildType.IsCustom || t.ChildType.TokenType == lexer.STRING || t.ChildType.TokenType == lexer.BYTES || t.ChildType.IsAnExternalStructure() || t.ChildType.IsMap || t.ChildType.IsArray {
-			return fmt.Sprintf("func (s %s) int { return bstd.SizeSlice(s, %s) }",
-				utils.BencTypeToGolang(t), g.getElemSizeFunc(t.ChildType))
+			return fmt.Sprintf("func (s %s) int { return bstd.SizeSlice(%s, %s) }",
+				utils.BencTypeToGolang(t), elem, g.getElemSizeFunc(t.ChildType))
 		}
 
-		return fmt.Sprintf("func (s %s) int { return bstd.SizeFixedSlice(s, %s()) }",
-			utils.BencTypeToGolang(t), g.getElemSizeFunc(t.ChildType))
+		return fmt.Sprintf("func (s %s) int { return bstd.SizeFixedSlice(%s, %s()) }",
+			utils.BencTypeToGolang(t), elem, g.getElemSizeFunc(t.ChildType))
 	case t.IsMap:
 		return fmt.Sprintf("func (s %s) int { return bstd.SizeMap(s, %s, %s) }",
 			utils.BencTypeToGolang(t), g.getElemSizeFunc(t.MapKeyType), g.getElemSizeFunc(t.ChildType))
@@ -610,8 +618,16 @@ func (g *GoGen) getMarshalFunc() string {
 
 	switch {
 	case field.Type.IsArray:
-		return fmt.Sprintf("bstd.MarshalSlice(n, b, %s.%s, %s)",
-			ctr.PrivateName, field.PublicName, g.getElemMarshalFunc(field.Type.ChildType))
+		if field.Type.IsFixedArray() && field.Type.ChildType.TokenType == lexer.BYTE {
+			return fmt.Sprintf("bstd.MarshalFixedByteArray(n, b, %s.%s[:])",
+				ctr.PrivateName, field.PublicName)
+		}
+		acc := fmt.Sprintf("%s.%s", ctr.PrivateName, field.PublicName)
+		if field.Type.IsFixedArray() {
+			acc += "[:]"
+		}
+		return fmt.Sprintf("bstd.MarshalSlice(n, b, %s, %s)",
+			acc, g.getElemMarshalFunc(field.Type.ChildType))
 	case field.Type.IsMap:
 		return fmt.Sprintf("bstd.MarshalMap(n, b, %s.%s, %s, %s)",
 			ctr.PrivateName, field.PublicName, g.getElemMarshalFunc(field.Type.MapKeyType), g.getElemMarshalFunc(field.Type.ChildType))
@@ -639,8 +655,16 @@ func (g *GoGen) getMarshalFunc() string {
 func (g *GoGen) getElemMarshalFunc(t *parser.Type) string {
 	switch {
 	case t.IsArray:
-		return fmt.Sprintf("func (n int, b []byte, s %s) int { return bstd.MarshalSlice(n, b, s, %s) }",
-			utils.BencTypeToGolang(t), g.getElemMarshalFunc(t.ChildType))
+		if t.IsFixedArray() && t.ChildType.TokenType == lexer.BYTE {
+			return fmt.Sprintf("func (n int, b []byte, s %s) int { return bstd.MarshalFixedByteArray(n, b, s[:]) }",
+				utils.BencTypeToGolang(t))
+		}
+		elem := "s"
+		if t.IsFixedArray() {
+			elem = "s[:]"
+		}
+		return fmt.Sprintf("func (n int, b []byte, s %s) int { return bstd.MarshalSlice(n, b, %s, %s) }",
+			utils.BencTypeToGolang(t), elem, g.getElemMarshalFunc(t.ChildType))
 	case t.IsMap:
 		return fmt.Sprintf("func (n int, b []byte, s %s) int { return bstd.MarshalMap(n, b, s, %s, %s) }",
 			utils.BencTypeToGolang(t), g.getElemMarshalFunc(t.MapKeyType), g.getElemMarshalFunc(t.ChildType))
@@ -729,6 +753,14 @@ func (g *GoGen) getUnmarshalFunc() string {
 
 	switch {
 	case field.Type.IsArray:
+		if field.Type.IsFixedArray() {
+			if field.Type.ChildType.TokenType == lexer.BYTE {
+				return fmt.Sprintf("bstd.UnmarshalFixedByteArray(n, b, %s.%s[:])",
+					ctr.PrivateName, field.PublicName)
+			}
+			return fmt.Sprintf("bstd.UnmarshalFixedArray(n, b, %s.%s[:], %s)",
+				ctr.PrivateName, field.PublicName, g.getElemUnmarshalFunc(field.Type.ChildType))
+		}
 		return fmt.Sprintf("bstd.UnmarshalSlice[%s](n, b, %s)",
 			utils.BencTypeToGolang(field.Type.ChildType), g.getElemUnmarshalFunc(field.Type.ChildType))
 	case field.Type.IsMap:
@@ -752,6 +784,15 @@ func (g *GoGen) getUnmarshalFunc() string {
 func (g *GoGen) getElemUnmarshalFunc(t *parser.Type) string {
 	switch {
 	case t.IsArray:
+		if t.IsFixedArray() {
+			gt := utils.BencTypeToGolang(t)
+			if t.ChildType.TokenType == lexer.BYTE {
+				return fmt.Sprintf("func (n int, b []byte) (int, %s, error) { var a %s; n, err := bstd.UnmarshalFixedByteArray(n, b, a[:]); return n, a, err }",
+					gt, gt)
+			}
+			return fmt.Sprintf("func (n int, b []byte) (int, %s, error) { var a %s; n, err := bstd.UnmarshalFixedArray(n, b, a[:], %s); return n, a, err }",
+				gt, gt, g.getElemUnmarshalFunc(t.ChildType))
+		}
 		return fmt.Sprintf("func (n int, b []byte) (int, %s, error) { return bstd.UnmarshalSlice[%s](n, b, %s) }",
 			utils.BencTypeToGolang(t), utils.BencTypeToGolang(t.ChildType), g.getElemUnmarshalFunc(t.ChildType))
 	case t.IsMap:
@@ -792,6 +833,15 @@ func (g *GoGen) GenUnmarshal() string {
 		sb.WriteString(fmt.Sprintf("    if n, ok, err = bgenimpl.HandleCompatibility(n, b, %sRIds, %d); err != nil {\n        if err == bgenimpl.ErrEof {\n            return n, nil\n        }\n        return\n    }\n",
 			ctr.PrivateName, field.ID))
 
+		// Fixed arrays decode in place (UnmarshalFixedArray returns (int, error)),
+		// so they drop the value target — but unlike containers they still carry a
+		// per-field tag, so the HandleCompatibility block above is kept.
+		if field.Type.IsFixedArray() {
+			sb.WriteString(fmt.Sprintf("    if ok {\n        if n, err = %s; err != nil {\n            return\n        }\n    }\n",
+				g.getUnmarshalFunc()))
+			return
+		}
+
 		sb.WriteString(fmt.Sprintf("    if ok {\n        if n, %s.%s, err = %s; err != nil {\n            return\n        }\n    }\n",
 			ctr.PrivateName, field.PublicName, g.getUnmarshalFunc()))
 	})
@@ -813,7 +863,7 @@ func (g *GoGen) GenUnmarshalPlain() string {
 	g.ForEachCtrFields(func(_ int) {
 		field := g.field
 
-		if g.IsContainer(field.Type.ExternalStructure) {
+		if g.IsContainer(field.Type.ExternalStructure) || field.Type.IsFixedArray() {
 			sb.WriteString(fmt.Sprintf("    if n, err = %s; err != nil {\n        return\n    }\n",
 				g.getUnmarshalFunc()))
 			return

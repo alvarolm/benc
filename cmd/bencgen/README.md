@@ -21,6 +21,7 @@ A code generator for the **Benc** schema format, ensuring forward and backward c
   - [Type Attributes](#type-attributes)
   - [Types](#types)
   - [Containers or Enums](#containers-or-enums)
+  - [Fixed-Size Arrays](#fixed-size-arrays)
   - [Custom Types](#custom-types)
 - [Languages](#languages)
 - [License](#license)
@@ -354,6 +355,7 @@ Type attributes **must** precede the type. For arrays:
 |  `bool`   |   `bool`   |
 | `string`  |  `string`  |
 |   `[]T`   |   `[]T`    |
+|  `[N]T`   |   `[N]T`   |
 | `<K, V>`  | `map[K]V`  |
 
 ### Containers or Enums
@@ -394,6 +396,33 @@ ctr Person {
     JobStatus jobStatus = 1;
 }
 ```
+
+### Fixed-Size Arrays
+
+A field can be declared as a fixed-size array `[N]T` (where `N > 0`), which maps to a
+Go array `[N]T`:
+
+```plaintext
+ctr Blob {
+    [16]byte hash   = 1;
+    [4]int32 vector = 2;
+    [3]string names = 3;
+}
+```
+
+The element `T` can be any supported type — primitives, `string`/`bytes`, enums,
+containers, custom types, and nesting (`[][N]T`, `<K,[N]V>`). Compared to a slice `[]T`:
+
+- It **decodes in place** (no allocation — the array is filled directly).
+- It **validates length on decode**: a payload whose element count ≠ `N` returns
+  `benc.ErrInvalidSize` (rather than panicking or corrupting the stream).
+- `[N]byte` uses a single `copy()` instead of a per-element loop.
+
+It reuses the slice wire format (so `[N]T` is interchangeable with `[]T` when the length
+matches), which keeps fixed-array fields skippable for forward/backward compatibility.
+
+> Note: `[N]int` / `[N]uint` (and `[]int` / `[]uint`) are not supported — use a sized
+> integer such as `int32` / `int64`.
 
 ### Custom Types
 

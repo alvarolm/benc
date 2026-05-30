@@ -277,8 +277,20 @@ func (p *Parser) expectType() *Type {
 	switch {
 	case p.match(lexer.OPEN_BRACKET):
 		p.nextToken()
+		arraySize := 0
+		if p.match(lexer.NUMBER) {
+			size, err := strconv.ParseInt(p.lit, 10, 64)
+			if err != nil {
+				p.error("Error parsing fixed array size: " + err.Error())
+			}
+			if size <= 0 {
+				p.error("Fixed array size must be greater than 0")
+			}
+			arraySize = int(size)
+			p.nextToken()
+		}
 		p.expect(lexer.CLOSE_BRACKET)
-		return &Type{IsArray: true, ChildType: p.expectType()}
+		return &Type{IsArray: true, ArraySize: arraySize, ChildType: p.expectType()}
 
 	case p.match(lexer.OPEN_ARROW):
 		p.nextToken()
@@ -363,6 +375,7 @@ type (
 		IsUnsafe          bool
 		IsReturnCopy      bool
 		IsArray           bool
+		ArraySize         int // 0 = dynamic slice []T; >0 = fixed array [N]T
 		IsMap             bool
 
 		// Resolved by the code generator when ExternalStructure names a custom
@@ -415,6 +428,10 @@ type (
 
 func (t *Type) IsAnExternalStructure() bool {
 	return t.ExternalStructure != ""
+}
+
+func (t *Type) IsFixedArray() bool {
+	return t.IsArray && t.ArraySize > 0
 }
 
 func (t *Type) AppendUnsafeIfPresent() string {

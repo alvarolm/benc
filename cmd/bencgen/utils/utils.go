@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -25,6 +26,9 @@ func BencTypeToGolang(t *parser.Type) string {
 
 func formatTypeHelper(t *parser.Type, useGoFormat bool) string {
 	if t.IsArray {
+		if t.ArraySize > 0 {
+			return fmt.Sprintf("[%d]%s", t.ArraySize, formatTypeHelper(t.ChildType, useGoFormat))
+		}
 		return "[]" + formatTypeHelper(t.ChildType, useGoFormat)
 	}
 	if t.IsMap {
@@ -80,6 +84,7 @@ func compareTypes(t1 *parser.Type, t2 *parser.Type) bool {
 	}
 
 	return t1.IsArray == t2.IsArray &&
+		t1.ArraySize == t2.ArraySize &&
 		t1.IsMap == t2.IsMap &&
 		t1.TokenType == t2.TokenType &&
 		t1.ExternalStructure == t2.ExternalStructure &&

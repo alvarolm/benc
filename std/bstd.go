@@ -232,6 +232,76 @@ func UnmarshalSlice[T any](n int, b []byte, unmarshaler interface{}) (int, []T, 
 	return n + 4, ts, nil
 }
 
+// UnmarshalFixedArray decodes a slice-encoded value in place into arr, which is a
+// slice over a fixed [N]T array (pass arr[:]). The decoded element count must equal
+// len(arr); otherwise benc.ErrInvalidSize is returned. It allocates nothing and, unlike
+// UnmarshalSlice, validates the length before touching memory.
+func UnmarshalFixedArray[T any](n int, b []byte, arr []T, unmarshaler interface{}) (int, error) {
+	n, us, err := UnmarshalUint(n, b)
+	if err != nil {
+		return 0, err
+	}
+	if int(us) != len(arr) {
+		return 0, benc.ErrInvalidSize
+	}
+
+	switch p := unmarshaler.(type) {
+	case func(n int, b []byte) (int, T, error):
+		for i := range arr {
+			n, arr[i], err = p(n, b)
+			if err != nil {
+				return 0, err
+			}
+		}
+	case func(n int, b []byte, v *T) (int, error):
+		for i := range arr {
+			n, err = p(n, b, &arr[i])
+			if err != nil {
+				return 0, err
+			}
+		}
+	default:
+		panic("benc: invalid `unmarshaler` provided in `UnmarshalFixedArray`")
+	}
+
+	return n + 4, nil
+}
+
+// MarshalFixedByteArray marshals a fixed [N]byte array (pass arr[:]) using the slice wire
+// format, with a single copy instead of a per-byte loop.
+//
+// !- Panics, if 'b' is too small.
+func MarshalFixedByteArray(n int, b []byte, bs []byte) int {
+	n = MarshalUint(n, b, uint(len(bs)))
+	n += copy(b[n:], bs)
+
+	u := b[n : n+4]
+	_ = u[3]
+	u[0] = byte(1)
+	u[1] = byte(1)
+	u[2] = byte(1)
+	u[3] = byte(1)
+	return n + 4
+}
+
+// UnmarshalFixedByteArray decodes a slice-encoded byte sequence in place into dst, which is
+// a slice over a fixed [N]byte array (pass arr[:]). The decoded length must equal len(dst);
+// otherwise benc.ErrInvalidSize is returned.
+func UnmarshalFixedByteArray(n int, b []byte, dst []byte) (int, error) {
+	n, us, err := UnmarshalUint(n, b)
+	if err != nil {
+		return 0, err
+	}
+	if int(us) != len(dst) {
+		return 0, benc.ErrInvalidSize
+	}
+	if len(b)-n < len(dst)+4 {
+		return 0, benc.ErrBufTooSmall
+	}
+	n += copy(dst, b[n:])
+	return n + 4, nil
+}
+
 // Returns the new offset 'n' after skipping the marshalled map.
 //
 // Possible errors returned:
