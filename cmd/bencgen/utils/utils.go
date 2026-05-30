@@ -36,6 +36,10 @@ func formatTypeHelper(t *parser.Type, useGoFormat bool) string {
 		return "<" + keyFormat + ", " + valueFormat + ">"
 	}
 
+	if t.IsCustom && useGoFormat {
+		return t.CustomGoType
+	}
+
 	if t.IsAnExternalStructure() {
 		return t.ExternalStructure
 	}

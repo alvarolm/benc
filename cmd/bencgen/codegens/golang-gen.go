@@ -2,7 +2,6 @@ package codegens
 
 import (
 	"fmt"
-	//"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -56,6 +55,7 @@ type GoGen struct {
 
 	enumDecls      []string
 	containerDecls []string
+	customMap      map[string]*parser.CustomStmt
 
 	varMap map[string]string
 
@@ -70,10 +70,15 @@ type GoGen struct {
 	field         GoField
 	enumStmt      GoEnumStmt
 	containerStmt GoContainerStmt
+	customStmt    *parser.CustomStmt
 }
 
 func NewGoGen(file string) *GoGen {
-	return &GoGen{file: file, importedEnumsOrContainers: make(map[string]string)}
+	return &GoGen{
+		file:                      file,
+		importedEnumsOrContainers: make(map[string]string),
+		customMap:                 make(map[string]*parser.CustomStmt),
+	}
 }
 
 func (g *GoGen) File() string {
@@ -90,6 +95,73 @@ func (g *GoGen) IsEnum(externalStructure string) bool {
 
 func (g *GoGen) IsContainer(externalStructure string) bool {
 	return slices.Contains(g.containerDecls, externalStructure)
+}
+
+func (g *GoGen) IsCustom(externalStructure string) bool {
+	_, ok := g.customMap[externalStructure]
+	return ok
+}
+
+func lastPathSegment(path string) string {
+	split := strings.Split(path, "/")
+	return split[len(split)-1]
+}
+
+// resolveCustomTypes annotates t (and its child/key types) with the resolved
+// metadata for any custom type it references. Must run before
+// adjustExternalStructureToImports so ExternalStructure is still the raw name.
+func (g *GoGen) resolveCustomTypes(t *parser.Type) {
+	if t == nil {
+		return
+	}
+
+	if t.IsAnExternalStructure() {
+		if stmt, ok := g.customMap[t.ExternalStructure]; ok {
+			t.IsCustom = true
+			if stmt.IsAlias {
+				public := utils.ToUpper(stmt.Name)
+				priv := utils.ToLower(stmt.Name)
+				t.CustomGoType = public
+				t.CustomSizeFn = priv + "Size"
+				t.CustomMarshalFn = priv + "Marshal"
+				t.CustomUnmarshalFn = priv + "Unmarshal"
+				t.CustomWireTag = g.mapTokenTypeToBgenimplType(stmt.BaseType)
+			} else {
+				alias := lastPathSegment(stmt.FuncsPath)
+				public := utils.ToUpper(stmt.Name)
+				t.CustomGoType = stmt.GoType
+				t.CustomSizeFn = alias + ".Size" + public
+				t.CustomMarshalFn = alias + ".Marshal" + public
+				t.CustomUnmarshalFn = alias + ".Unmarshal" + public
+				t.CustomWireTag = "Bytes"
+			}
+		}
+		return
+	}
+
+	g.resolveCustomTypes(t.MapKeyType)
+	g.resolveCustomTypes(t.ChildType)
+}
+
+func (g *GoGen) AddCustomDecls(stmts []*parser.CustomStmt) {
+	for _, stmt := range stmts {
+		g.customMap[stmt.Name] = stmt
+
+		// Form B references an external codec package (and optionally the type's
+		// own package); Form A is fully local and needs no imports.
+		if stmt.IsAlias {
+			continue
+		}
+		for _, pkg := range []string{stmt.FuncsPath, stmt.ImportPath} {
+			if pkg != "" && !slices.Contains(g.importedPackages, pkg) {
+				g.importedPackages = append(g.importedPackages, pkg)
+			}
+		}
+	}
+}
+
+func (g *GoGen) SetCustomStatement(stmt *parser.CustomStmt) {
+	g.customStmt = stmt
 }
 
 func (g *GoGen) ForEachCtrFields(f func(i int)) {
@@ -136,6 +208,10 @@ func (g *GoGen) SetEnumStatement(stmt *parser.EnumStmt) {
 }
 
 func (g *GoGen) adjustExternalStructureToImports(t *parser.Type) {
+	if t.IsCustom {
+		return
+	}
+
 	if t.IsAnExternalStructure() {
 		if replacement, ok := g.importedEnumsOrContainers[t.ExternalStructure]; ok {
 			t.ExternalStructure = replacement
@@ -158,6 +234,7 @@ func (g *GoGen) adjustExternalStructureToImports(t *parser.Type) {
 func (g *GoGen) SetContainerStatement(stmt *parser.ContainerStmt) {
 	fields := stmt.Fields
 	for _, field := range fields {
+		g.resolveCustomTypes(field.Type)
 		g.adjustExternalStructureToImports(field.Type)
 	}
 
@@ -355,13 +432,59 @@ func (g *GoGen) GenEnum() string {
 	return sb.String()
 }
 
+// GenCustom emits the Go type definition and the three local cast helpers for an
+// alias custom type (Form A: `custom Name = string;`). External-codec customs
+// (Form B) emit nothing here — they reference a user-provided package.
+func (g *GoGen) GenCustom() string {
+	stmt := g.customStmt
+	if stmt == nil || !stmt.IsAlias {
+		return ""
+	}
+
+	public := utils.ToUpper(stmt.Name)
+	priv := utils.ToLower(stmt.Name)
+	base := stmt.BaseType
+	goBase := base.Golang()
+	suffix := base.String()
+
+	// `bytes` has no plain Unmarshal; default to the cropped variant (matching the
+	// primitive default in AppendReturnCopyIfPresent).
+	unmarshalSuffix := suffix
+	if base == lexer.BYTES {
+		unmarshalSuffix = "BytesCropped"
+	}
+
+	// Only string/bytes/int/uint take a value argument in their Size function;
+	// fixed-width types have a no-argument SizeX().
+	sizeTakesArg := base == lexer.STRING || base == lexer.BYTES || base == lexer.INT || base == lexer.UINT
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("// Custom - %s\ntype %s %s\n\n", stmt.Name, public, goBase))
+
+	if sizeTakesArg {
+		sb.WriteString(fmt.Sprintf("func %sSize(v %s) int { return bstd.Size%s(%s(v)) }\n",
+			priv, public, suffix, goBase))
+	} else {
+		sb.WriteString(fmt.Sprintf("func %sSize(_ %s) int { return bstd.Size%s() }\n",
+			priv, public, suffix))
+	}
+
+	sb.WriteString(fmt.Sprintf("func %sMarshal(n int, b []byte, v %s) int { return bstd.Marshal%s(n, b, %s(v)) }\n",
+		priv, public, suffix, goBase))
+
+	sb.WriteString(fmt.Sprintf("func %sUnmarshal(n int, b []byte) (int, %s, error) {\n    n, v, err := bstd.Unmarshal%s(n, b)\n    return n, %s(v), err\n}\n\n",
+		priv, public, unmarshalSuffix, public))
+
+	return sb.String()
+}
+
 func (g *GoGen) getSizeFunc() string {
 	ctr := g.containerStmt
 	field := g.field
 
 	switch {
 	case field.Type.IsArray:
-		if field.Type.ChildType.TokenType == lexer.STRING || field.Type.ChildType.TokenType == lexer.BYTES || field.Type.ChildType.IsAnExternalStructure() || field.Type.ChildType.IsMap || field.Type.ChildType.IsArray {
+		if field.Type.ChildType.IsCustom || field.Type.ChildType.TokenType == lexer.STRING || field.Type.ChildType.TokenType == lexer.BYTES || field.Type.ChildType.IsAnExternalStructure() || field.Type.ChildType.IsMap || field.Type.ChildType.IsArray {
 			return fmt.Sprintf("bstd.SizeSlice(%s.%s, %s)",
 				ctr.PrivateName, field.PublicName, g.getElemSizeFunc(field.Type.ChildType))
 		}
@@ -371,6 +494,9 @@ func (g *GoGen) getSizeFunc() string {
 	case field.Type.IsMap:
 		return fmt.Sprintf("bstd.SizeMap(%s.%s, %s, %s)",
 			ctr.PrivateName, field.PublicName, g.getElemSizeFunc(field.Type.MapKeyType), g.getElemSizeFunc(field.Type.ChildType))
+	case field.Type.IsCustom:
+		return fmt.Sprintf("%s(%s.%s)",
+			field.Type.CustomSizeFn, ctr.PrivateName, field.PublicName)
 	case field.Type.IsAnExternalStructure():
 		if g.IsEnum(field.Type.ExternalStructure) {
 			return fmt.Sprintf("bgenimpl.SizeEnum(%s.%s)",
@@ -405,7 +531,7 @@ func makeExternalStructureUpperOrNot(externalStructure string) string {
 func (g *GoGen) getElemSizeFunc(t *parser.Type) string {
 	switch {
 	case t.IsArray:
-		if t.ChildType.TokenType == lexer.STRING || t.ChildType.TokenType == lexer.BYTES || t.ChildType.IsAnExternalStructure() || t.ChildType.IsMap || t.ChildType.IsArray {
+		if t.ChildType.IsCustom || t.ChildType.TokenType == lexer.STRING || t.ChildType.TokenType == lexer.BYTES || t.ChildType.IsAnExternalStructure() || t.ChildType.IsMap || t.ChildType.IsArray {
 			return fmt.Sprintf("func (s %s) int { return bstd.SizeSlice(s, %s) }",
 				utils.BencTypeToGolang(t), g.getElemSizeFunc(t.ChildType))
 		}
@@ -415,6 +541,8 @@ func (g *GoGen) getElemSizeFunc(t *parser.Type) string {
 	case t.IsMap:
 		return fmt.Sprintf("func (s %s) int { return bstd.SizeMap(s, %s, %s) }",
 			utils.BencTypeToGolang(t), g.getElemSizeFunc(t.MapKeyType), g.getElemSizeFunc(t.ChildType))
+	case t.IsCustom:
+		return t.CustomSizeFn
 	case t.IsAnExternalStructure():
 		if g.IsEnum(t.ExternalStructure) {
 			return "bgenimpl.SizeEnum"
@@ -487,6 +615,9 @@ func (g *GoGen) getMarshalFunc() string {
 	case field.Type.IsMap:
 		return fmt.Sprintf("bstd.MarshalMap(n, b, %s.%s, %s, %s)",
 			ctr.PrivateName, field.PublicName, g.getElemMarshalFunc(field.Type.MapKeyType), g.getElemMarshalFunc(field.Type.ChildType))
+	case field.Type.IsCustom:
+		return fmt.Sprintf("%s(n, b, %s.%s)",
+			field.Type.CustomMarshalFn, ctr.PrivateName, field.PublicName)
 	case field.Type.IsAnExternalStructure():
 		if g.IsEnum(field.Type.ExternalStructure) {
 			return fmt.Sprintf("bgenimpl.MarshalEnum(n, b, %s.%s)",
@@ -513,6 +644,8 @@ func (g *GoGen) getElemMarshalFunc(t *parser.Type) string {
 	case t.IsMap:
 		return fmt.Sprintf("func (n int, b []byte, s %s) int { return bstd.MarshalMap(n, b, s, %s, %s) }",
 			utils.BencTypeToGolang(t), g.getElemMarshalFunc(t.MapKeyType), g.getElemMarshalFunc(t.ChildType))
+	case t.IsCustom:
+		return t.CustomMarshalFn
 	case t.IsAnExternalStructure():
 		if g.IsEnum(t.ExternalStructure) {
 			return "bgenimpl.MarshalEnum"
@@ -539,8 +672,12 @@ func (g *GoGen) GenMarshal() string {
 		field := g.field
 
 		if !g.IsContainer(field.Type.ExternalStructure) {
+			wireTag := g.mapTokenTypeToBgenimplType(field.Type.TokenType)
+			if field.Type.IsCustom {
+				wireTag = field.Type.CustomWireTag
+			}
 			sb.WriteString(fmt.Sprintf("    n = bgenimpl.MarshalTag(n, b, bgenimpl.%s, %d)\n",
-				g.mapTokenTypeToBgenimplType(field.Type.TokenType), field.ID))
+				wireTag, field.ID))
 		}
 		sb.WriteString(fmt.Sprintf("    n = %s\n", g.getMarshalFunc()))
 	})
@@ -597,6 +734,8 @@ func (g *GoGen) getUnmarshalFunc() string {
 	case field.Type.IsMap:
 		return fmt.Sprintf("bstd.UnmarshalMap[%s, %s](n, b, %s, %s)",
 			utils.BencTypeToGolang(field.Type.MapKeyType), utils.BencTypeToGolang(field.Type.ChildType), g.getElemUnmarshalFunc(field.Type.MapKeyType), g.getElemUnmarshalFunc(field.Type.ChildType))
+	case field.Type.IsCustom:
+		return fmt.Sprintf("%s(n, b)", field.Type.CustomUnmarshalFn)
 	case field.Type.IsAnExternalStructure():
 		if g.IsEnum(field.Type.ExternalStructure) {
 			return fmt.Sprintf("bgenimpl.UnmarshalEnum[%s](n, b)", field.Type.ExternalStructure)
@@ -618,6 +757,8 @@ func (g *GoGen) getElemUnmarshalFunc(t *parser.Type) string {
 	case t.IsMap:
 		return fmt.Sprintf("func (n int, b []byte) (int, %s, error) { return bstd.UnmarshalMap[%s, %s](n, b, %s, %s) }",
 			utils.BencTypeToGolang(t), utils.BencTypeToGolang(t.MapKeyType), utils.BencTypeToGolang(t.ChildType), g.getElemUnmarshalFunc(t.MapKeyType), g.getElemUnmarshalFunc(t.ChildType))
+	case t.IsCustom:
+		return t.CustomUnmarshalFn
 	case t.IsAnExternalStructure():
 		if g.IsEnum(t.ExternalStructure) {
 			return "bgenimpl.UnmarshalEnum"

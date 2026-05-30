@@ -30,6 +30,7 @@ type Gen interface {
 
 	GenDefine() string
 	GenEnum() string
+	GenCustom() string
 	GenStruct() string
 	GenReservedIds() string
 	GenSize() string
@@ -47,10 +48,12 @@ type Gen interface {
 
 	AddEnumDecls(enumDecls []string)
 	AddContainerDecls(containerDecls []string)
+	AddCustomDecls(stmts []*parser.CustomStmt)
 
 	SetEnumStatement(stmt *parser.EnumStmt)
 	SetDefineStatement(stmt *parser.DefineStmt)
 	SetContainerStatement(stmt *parser.ContainerStmt)
+	SetCustomStatement(stmt *parser.CustomStmt)
 }
 
 func NewGen(lang GenLang, file string) Gen {
@@ -74,6 +77,8 @@ var disallowedNames = []string{"b", "n", "id", "r"}
 func Generate(g Gen, nodes []parser.Node, importDirs []string) string {
 	enumDecls := []string{}
 	containerDecls := []string{}
+	customDecls := []string{}
+	customStmts := []*parser.CustomStmt{}
 
 	varMap := make(map[string]string)
 
@@ -91,11 +96,15 @@ func Generate(g Gen, nodes []parser.Node, importDirs []string) string {
 
 	for _, node := range nodes {
 		switch stmt := node.(type) {
+		case *parser.CustomStmt:
+			validateCustomStmt(g, stmt, enumDecls, containerDecls, customDecls)
+			customDecls = append(customDecls, stmt.Name)
+			customStmts = append(customStmts, stmt)
 		case *parser.EnumStmt:
-			validateEnumStmt(g, stmt, enumDecls, containerDecls)
+			validateEnumStmt(g, stmt, enumDecls, containerDecls, customDecls)
 			enumDecls = append(enumDecls, stmt.Name)
 		case *parser.ContainerStmt:
-			validateCtrStmt(g, stmt, enumDecls, containerDecls)
+			validateCtrStmt(g, stmt, enumDecls, containerDecls, customDecls)
 			containerDecls = append(containerDecls, stmt.Name)
 		case *parser.VarStmt:
 			varMap[stmt.Name] = stmt.Value
@@ -104,6 +113,7 @@ func Generate(g Gen, nodes []parser.Node, importDirs []string) string {
 
 	g.AddEnumDecls(enumDecls)
 	g.AddContainerDecls(containerDecls)
+	g.AddCustomDecls(customStmts)
 
 	g.SetVarMap(varMap)
 
@@ -116,6 +126,12 @@ func Generate(g Gen, nodes []parser.Node, importDirs []string) string {
 
 			g.SetDefineStatement(stmt)
 			res += g.GenDefine()
+		case *parser.CustomStmt:
+			if !g.HasPackageDefined() {
+				LogErrorAndExit(g, "A package was not defined ( 'define ...' ).")
+			}
+			g.SetCustomStatement(stmt)
+			res += g.GenCustom()
 		case *parser.EnumStmt:
 			if !g.HasPackageDefined() {
 				LogErrorAndExit(g, "A package was not defined ( 'define ...' ).")
@@ -128,7 +144,7 @@ func Generate(g Gen, nodes []parser.Node, importDirs []string) string {
 			if !g.HasPackageDefined() {
 				LogErrorAndExit(g, "A package was not defined ( 'define ...' ).")
 			}
-			validateContainerFields(g, stmt, containerDecls, enumDecls)
+			validateContainerFields(g, stmt, containerDecls, enumDecls, customDecls)
 
 			g.SetContainerStatement(stmt)
 			res += generateContainer(g)
@@ -138,7 +154,7 @@ func Generate(g Gen, nodes []parser.Node, importDirs []string) string {
 	return res
 }
 
-func validateCtrStmt(g Gen, stmt *parser.ContainerStmt, enumDecls []string, containerDecls []string) {
+func validateCtrStmt(g Gen, stmt *parser.ContainerStmt, enumDecls []string, containerDecls []string, customDecls []string) {
 	if slices.Contains(enumDecls, stmt.Name) {
 		LogErrorAndExit(g, fmt.Sprintf("A enum with the same name '%s' is already declared.", stmt.Name))
 	}
@@ -147,18 +163,50 @@ func validateCtrStmt(g Gen, stmt *parser.ContainerStmt, enumDecls []string, cont
 		LogErrorAndExit(g, fmt.Sprintf("Multiple containers with the same name '%s'.", stmt.Name))
 	}
 
+	if slices.Contains(customDecls, stmt.Name) {
+		LogErrorAndExit(g, fmt.Sprintf("A custom type with the same name '%s' is already declared.", stmt.Name))
+	}
+
 	if len(stmt.Fields) == 0 {
 		LogErrorAndExit(g, fmt.Sprintf("Empty container '%s'.", stmt.Name))
 	}
 }
 
-func validateEnumStmt(g Gen, stmt *parser.EnumStmt, enumDecls []string, containerDecls []string) {
+func validateCustomStmt(g Gen, stmt *parser.CustomStmt, enumDecls []string, containerDecls []string, customDecls []string) {
+	if slices.Contains(customDecls, stmt.Name) {
+		LogErrorAndExit(g, fmt.Sprintf("Multiple custom types with the same name '%s'.", stmt.Name))
+	}
+	if slices.Contains(enumDecls, stmt.Name) {
+		LogErrorAndExit(g, fmt.Sprintf("An enum with the same name '%s' is already declared.", stmt.Name))
+	}
+	if slices.Contains(containerDecls, stmt.Name) {
+		LogErrorAndExit(g, fmt.Sprintf("A container with the same name '%s' is already declared.", stmt.Name))
+	}
+	if slices.Contains(disallowedNames, utils.ToLower(stmt.Name)) {
+		LogErrorAndExit(g, fmt.Sprintf("Disallowed custom type name '%s'.", stmt.Name))
+	}
+
+	if !stmt.IsAlias {
+		if stmt.GoType == "" {
+			LogErrorAndExit(g, fmt.Sprintf("Custom type '%s' is missing a 'type' value.", stmt.Name))
+		}
+		if stmt.FuncsPath == "" {
+			LogErrorAndExit(g, fmt.Sprintf("Custom type '%s' is missing a 'funcs' value.", stmt.Name))
+		}
+	}
+}
+
+func validateEnumStmt(g Gen, stmt *parser.EnumStmt, enumDecls []string, containerDecls []string, customDecls []string) {
 	if slices.Contains(enumDecls, stmt.Name) {
 		LogErrorAndExit(g, fmt.Sprintf("Multiple enums with the same name '%s'.", stmt.Name))
 	}
 
 	if slices.Contains(containerDecls, stmt.Name) {
 		LogErrorAndExit(g, fmt.Sprintf("A container with the same name '%s' is already declared.", stmt.Name))
+	}
+
+	if slices.Contains(customDecls, stmt.Name) {
+		LogErrorAndExit(g, fmt.Sprintf("A custom type with the same name '%s' is already declared.", stmt.Name))
 	}
 
 	if slices.Contains(disallowedNames, utils.ToLower(stmt.Name)) {
@@ -170,15 +218,16 @@ func validateEnumStmt(g Gen, stmt *parser.EnumStmt, enumDecls []string, containe
 	}
 }
 
-func validateContainerFields(g Gen, stmt *parser.ContainerStmt, enumDecls []string, containerDecls []string) {
+func validateContainerFields(g Gen, stmt *parser.ContainerStmt, enumDecls []string, containerDecls []string, customDecls []string) {
 	var ids []uint16
 	var lastID uint16
 	var fieldNames []string
 
 	for _, field := range stmt.Fields {
 		_, enumNotFound := utils.FindUndeclaredContainersOrEnums(enumDecls, field.Type)
-		if ctrEnum, notFound := utils.FindUndeclaredContainersOrEnums(containerDecls, field.Type); notFound && enumNotFound {
-			LogErrorAndExit(g, fmt.Sprintf("Container/Enum '%s' not declared on '%s' ('%s').", ctrEnum, stmt.Name, field.Name))
+		_, customNotFound := utils.FindUndeclaredContainersOrEnums(customDecls, field.Type)
+		if ctrEnum, notFound := utils.FindUndeclaredContainersOrEnums(containerDecls, field.Type); notFound && enumNotFound && customNotFound {
+			LogErrorAndExit(g, fmt.Sprintf("Container/Enum/Custom '%s' not declared on '%s' ('%s').", ctrEnum, stmt.Name, field.Name))
 		}
 
 		if field.ID == 0 {

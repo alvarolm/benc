@@ -21,6 +21,7 @@ A code generator for the **Benc** schema format, ensuring forward and backward c
   - [Type Attributes](#type-attributes)
   - [Types](#types)
   - [Containers or Enums](#containers-or-enums)
+  - [Custom Types](#custom-types)
 - [Languages](#languages)
 - [License](#license)
 
@@ -393,6 +394,60 @@ ctr Person {
     JobStatus jobStatus = 1;
 }
 ```
+
+### Custom Types
+
+Custom types let you use a named Go type as a field. They come in two forms.
+
+> ⚠️ Custom types are **not** designed for backward/forward compatibility — they
+> prioritize performance and simplicity. The codec writes raw value bytes; the
+> per-field tag only locates the field by ID in a matched round-trip.
+
+**Form A — newtype alias.** A named type over a scalar base type. `bencgen`
+generates the Go `type` definition and a codec built on the `bstd` primitives:
+
+```plaintext
+custom Name   = string;
+custom UserID = uint64;
+```
+
+This generates `type Name string` / `type UserID uint64` in the output package.
+The base type may be any scalar: `string`, `bytes`, `bool`, `byte`,
+`int`/`int16`/`int32`/`int64`, `uint`/`uint16`/`uint32`/`uint64`, `float32`/`float64`.
+
+**Form B — external codec.** For a type `bencgen` can't generate (e.g.
+`time.Time`), point at a package that provides the codec:
+
+```plaintext
+custom Timestamp {
+    type   = "time.Time";                       # struct-field Go type
+    import = "time";                            # OPTIONAL package providing `type`
+    funcs  = "github.com/me/benccodecs";        # package exporting the codec funcs
+}
+```
+
+The `funcs` package must export, named `Size<Name>`/`Marshal<Name>`/`Unmarshal<Name>`
+(matching `bstd.SizeString` etc., so one package can back many custom types):
+
+```go
+func SizeTimestamp(v time.Time) int
+func MarshalTimestamp(n int, b []byte, v time.Time) int
+func UnmarshalTimestamp(n int, b []byte) (int, time.Time, error)
+```
+
+Custom types work as fields, array elements, and map keys/values:
+
+```plaintext
+ctr Invoice {
+    UserID buyer = 1;
+    Timestamp at = 2;
+    []Name tags  = 3;
+    <Name, UserID> idx = 4;
+}
+```
+
+Custom map keys must be `comparable`. Custom types are local to the file that
+declares them.
 
 ## Languages
 

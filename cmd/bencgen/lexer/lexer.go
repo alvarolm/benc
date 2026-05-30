@@ -62,6 +62,10 @@ const (
 	COMMA     // ,
 	EQUALS    // =
 	SEMICOLON // ;
+
+	// CUSTOM is appended last so adding it does not shift the integer values of
+	// the type tokens above, which are serialized into existing BCD meta blocks.
+	CUSTOM // custom ...
 )
 
 var tokens = []string{
@@ -76,6 +80,7 @@ var tokens = []string{
 	STR_VALUE: "String Value",
 	CTR:       "Container",
 	ENUM:      "Enum",
+	CUSTOM:    "Custom",
 
 	INT64: "Int64",
 	INT32: "Int32",
@@ -119,6 +124,7 @@ var keywords = map[string]Token{
 	"enum":     ENUM,
 	"use":      USE,
 	"ctr":      CTR,
+	"custom":   CUSTOM,
 
 	"int64": INT64,
 	"int32": INT32,

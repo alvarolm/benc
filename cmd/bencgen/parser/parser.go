@@ -65,6 +65,8 @@ func (p *Parser) parseStatement() Node {
 		return p.parseContainerStmt()
 	case p.match(lexer.ENUM):
 		return p.parseEnumStmt()
+	case p.match(lexer.CUSTOM):
+		return p.parseCustomStmt()
 	case p.match(lexer.DEFINE):
 		return p.parseDefineStmt()
 	case p.match(lexer.VAR):
@@ -72,7 +74,70 @@ func (p *Parser) parseStatement() Node {
 	case p.match(lexer.USE):
 		return p.parseUseStmt()
 	default:
-		p.error(fmt.Sprintf("Unexpected token: `%s`. Expected: `Container, Enum, Define, Use or Var`", p.token))
+		p.error(fmt.Sprintf("Unexpected token: `%s`. Expected: `Container, Enum, Custom, Define, Use or Var`", p.token))
+		return nil
+	}
+}
+
+// isBaseType reports whether tok is a scalar benc base type usable as the
+// underlying type of a `custom Name = <base>;` alias declaration.
+func isBaseType(tok lexer.Token) bool {
+	switch tok {
+	case lexer.STRING, lexer.BYTES, lexer.BOOL, lexer.BYTE,
+		lexer.INT, lexer.INT16, lexer.INT32, lexer.INT64,
+		lexer.UINT, lexer.UINT16, lexer.UINT32, lexer.UINT64,
+		lexer.FLOAT32, lexer.FLOAT64:
+		return true
+	}
+	return false
+}
+
+func (p *Parser) parseCustomStmt() Node {
+	p.expect(lexer.CUSTOM)
+	name := p.lit
+	p.expect(lexer.IDENT)
+	p.errorIfContainsDot(name, "Custom type names")
+
+	switch {
+	case p.match(lexer.EQUALS):
+		// Form A: alias over a scalar base type, e.g. `custom Name = string;`
+		p.nextToken()
+		baseType := p.token
+		if !isBaseType(baseType) {
+			p.error("`custom` alias must be a scalar base type (e.g. string, int, uint64)")
+		}
+		p.nextToken()
+		p.expect(lexer.SEMICOLON)
+		return &CustomStmt{Name: name, IsAlias: true, BaseType: baseType}
+
+	case p.match(lexer.OPEN_BRACE):
+		// Form B: external codec, e.g. `custom Timestamp { type = "..."; funcs = "..."; }`
+		p.nextToken()
+		stmt := &CustomStmt{Name: name}
+		for !p.match(lexer.CLOSE_BRACE) {
+			key := p.lit
+			p.expect(lexer.IDENT)
+			p.expect(lexer.EQUALS)
+			value := p.lit
+			p.expect(lexer.STR_VALUE)
+			p.expect(lexer.SEMICOLON)
+
+			switch key {
+			case "type":
+				stmt.GoType = value
+			case "import":
+				stmt.ImportPath = value
+			case "funcs":
+				stmt.FuncsPath = value
+			default:
+				p.error(fmt.Sprintf("Unknown custom key `%s`. Expected: `type`, `import` or `funcs`", key))
+			}
+		}
+		p.expect(lexer.CLOSE_BRACE)
+		return stmt
+
+	default:
+		p.error("Expected `=` (alias) or `{` (external codec) after custom type name")
 		return nil
 	}
 }
@@ -299,6 +364,15 @@ type (
 		IsReturnCopy      bool
 		IsArray           bool
 		IsMap             bool
+
+		// Resolved by the code generator when ExternalStructure names a custom
+		// type (see CustomStmt). Left zero for primitives/containers/enums.
+		IsCustom          bool
+		CustomGoType      string
+		CustomSizeFn      string
+		CustomMarshalFn   string
+		CustomUnmarshalFn string
+		CustomWireTag     string
 	}
 	ContainerStmt struct {
 		Name        string
@@ -311,6 +385,19 @@ type (
 	}
 	DefineStmt struct {
 		Package string
+	}
+	CustomStmt struct {
+		Name string
+
+		// Form A (alias): IsAlias is true and BaseType holds the scalar base type.
+		IsAlias  bool
+		BaseType lexer.Token
+
+		// Form B (external codec): the Go type, its optional import path, and the
+		// package that exports Size<Name>/Marshal<Name>/Unmarshal<Name>.
+		GoType     string
+		ImportPath string
+		FuncsPath  string
 	}
 	VarStmt struct {
 		Name  string
