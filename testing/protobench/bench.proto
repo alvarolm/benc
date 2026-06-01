@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package protobench;
+
+option go_package = "github.com/alvarolm/benc/testing/protobench;protobench";
+
+// Blob mirrors benc's `[255]byte` / `bytes` field.
+message Blob {
+  bytes data = 1;
+}
+
+// Ints mirrors benc's `[255]int32`. sfixed32 is the like-for-like match to benc's
+// fixed 4-byte int32 wire form (idiomatic `int32` would varint-encode and differ).
+message Ints {
+  repeated sfixed32 data = 1;
+}

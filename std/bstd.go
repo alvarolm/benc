@@ -191,6 +191,102 @@ func MarshalSlice[T any](n int, b []byte, slice []T, marshaler MarshalFunc[T]) i
 	return n + 4
 }
 
+// Bulk marshalers for slices of fixed-width numeric types.
+//
+// These are byte-for-byte equivalent to MarshalSlice(n, b, s, Marshal<Type>) but write
+// each element with binary.LittleEndian.PutUintNN in a monomorphic loop. That avoids the
+// per-element MarshalFunc closure call AND lets the compiler fuse the bytes into a single
+// store — writing on the unsigned value sidesteps the sign-extending shift that would
+// otherwise block the fusion. bencgen emits them for slices and fixed arrays whose element
+// is one of these types. The wire format (varint length + elements + 4-byte terminator)
+// is unchanged, so they interoperate with UnmarshalSlice / UnmarshalFixedArray.
+//
+// !- Panic, if 'b' is too small.
+
+func MarshalInt16Slice(n int, b []byte, s []int16) int {
+	n = MarshalUint(n, b, uint(len(s)))
+	for _, v := range s {
+		binary.LittleEndian.PutUint16(b[n:n+2], uint16(v))
+		n += 2
+	}
+	return marshalSliceTerminator(n, b)
+}
+
+func MarshalUint16Slice(n int, b []byte, s []uint16) int {
+	n = MarshalUint(n, b, uint(len(s)))
+	for _, v := range s {
+		binary.LittleEndian.PutUint16(b[n:n+2], v)
+		n += 2
+	}
+	return marshalSliceTerminator(n, b)
+}
+
+func MarshalInt32Slice(n int, b []byte, s []int32) int {
+	n = MarshalUint(n, b, uint(len(s)))
+	for _, v := range s {
+		binary.LittleEndian.PutUint32(b[n:n+4], uint32(v))
+		n += 4
+	}
+	return marshalSliceTerminator(n, b)
+}
+
+func MarshalUint32Slice(n int, b []byte, s []uint32) int {
+	n = MarshalUint(n, b, uint(len(s)))
+	for _, v := range s {
+		binary.LittleEndian.PutUint32(b[n:n+4], v)
+		n += 4
+	}
+	return marshalSliceTerminator(n, b)
+}
+
+func MarshalInt64Slice(n int, b []byte, s []int64) int {
+	n = MarshalUint(n, b, uint(len(s)))
+	for _, v := range s {
+		binary.LittleEndian.PutUint64(b[n:n+8], uint64(v))
+		n += 8
+	}
+	return marshalSliceTerminator(n, b)
+}
+
+func MarshalUint64Slice(n int, b []byte, s []uint64) int {
+	n = MarshalUint(n, b, uint(len(s)))
+	for _, v := range s {
+		binary.LittleEndian.PutUint64(b[n:n+8], v)
+		n += 8
+	}
+	return marshalSliceTerminator(n, b)
+}
+
+func MarshalFloat32Slice(n int, b []byte, s []float32) int {
+	n = MarshalUint(n, b, uint(len(s)))
+	for _, v := range s {
+		binary.LittleEndian.PutUint32(b[n:n+4], math.Float32bits(v))
+		n += 4
+	}
+	return marshalSliceTerminator(n, b)
+}
+
+func MarshalFloat64Slice(n int, b []byte, s []float64) int {
+	n = MarshalUint(n, b, uint(len(s)))
+	for _, v := range s {
+		binary.LittleEndian.PutUint64(b[n:n+8], math.Float64bits(v))
+		n += 8
+	}
+	return marshalSliceTerminator(n, b)
+}
+
+// marshalSliceTerminator writes the 4-byte slice terminator (the same one MarshalSlice
+// writes) and returns the advanced offset.
+func marshalSliceTerminator(n int, b []byte) int {
+	u := b[n : n+4]
+	_ = u[3]
+	u[0] = byte(1)
+	u[1] = byte(1)
+	u[2] = byte(1)
+	u[3] = byte(1)
+	return n + 4
+}
+
 // Returns the new offset 'n', as well as the slice, that got unmarshalled.
 //
 // Possible errors returned:
@@ -686,16 +782,7 @@ func SizeUint64() int {
 
 // Returns the new offset 'n' after marshalling the 64-bit unsigned integer.
 func MarshalUint64(n int, b []byte, v uint64) int {
-	u := b[n : n+8]
-	_ = u[7]
-	u[0] = byte(v)
-	u[1] = byte(v >> 8)
-	u[2] = byte(v >> 16)
-	u[3] = byte(v >> 24)
-	u[4] = byte(v >> 32)
-	u[5] = byte(v >> 40)
-	u[6] = byte(v >> 48)
-	u[7] = byte(v >> 56)
+	binary.LittleEndian.PutUint64(b[n:n+8], v)
 	return n + 8
 }
 
@@ -736,12 +823,7 @@ func SizeUint32() int {
 
 // Returns the new offset 'n' after marshalling the 32-bit unsigned integer.
 func MarshalUint32(n int, b []byte, v uint32) int {
-	u := b[n : n+4]
-	_ = u[3]
-	u[0] = byte(v)
-	u[1] = byte(v >> 8)
-	u[2] = byte(v >> 16)
-	u[3] = byte(v >> 24)
+	binary.LittleEndian.PutUint32(b[n:n+4], v)
 	return n + 4
 }
 
@@ -781,10 +863,7 @@ func SizeUint16() int {
 
 // Returns the new offset 'n' after marshalling the 16-bit unsigned integer.
 func MarshalUint16(n int, b []byte, v uint16) int {
-	u := b[n : n+2]
-	_ = u[1]
-	u[0] = byte(v)
-	u[1] = byte(v >> 8)
+	binary.LittleEndian.PutUint16(b[n:n+2], v)
 	return n + 2
 }
 
@@ -824,16 +903,7 @@ func SizeInt64() int {
 
 // Returns the new offset 'n' after marshalling the 64-bit integer.
 func MarshalInt64(n int, b []byte, v int64) int {
-	u := b[n : n+8]
-	_ = u[7]
-	u[0] = byte(v)
-	u[1] = byte(v >> 8)
-	u[2] = byte(v >> 16)
-	u[3] = byte(v >> 24)
-	u[4] = byte(v >> 32)
-	u[5] = byte(v >> 40)
-	u[6] = byte(v >> 48)
-	u[7] = byte(v >> 56)
+	binary.LittleEndian.PutUint64(b[n:n+8], uint64(v))
 	return n + 8
 }
 
@@ -874,12 +944,7 @@ func SizeInt32() int {
 
 // Returns the new offset 'n' after marshalling the 32-bit integer.
 func MarshalInt32(n int, b []byte, v int32) int {
-	u := b[n : n+4]
-	_ = u[3]
-	u[0] = byte(v)
-	u[1] = byte(v >> 8)
-	u[2] = byte(v >> 16)
-	u[3] = byte(v >> 24)
+	binary.LittleEndian.PutUint32(b[n:n+4], uint32(v))
 	return n + 4
 }
 
@@ -919,10 +984,7 @@ func SizeInt16() int {
 
 // Returns the new offset 'n' after marshalling the 16-bit integer.
 func MarshalInt16(n int, b []byte, v int16) int {
-	u := b[n : n+2]
-	_ = u[1]
-	u[0] = byte(v)
-	u[1] = byte(v >> 8)
+	binary.LittleEndian.PutUint16(b[n:n+2], uint16(v))
 	return n + 2
 }
 
@@ -964,17 +1026,7 @@ func SizeFloat64() int {
 
 // Returns the new offset 'n' after marshalling the 64-bit float.
 func MarshalFloat64(n int, b []byte, v float64) int {
-	v64 := math.Float64bits(v)
-	u := b[n : n+8]
-	_ = u[7]
-	u[0] = byte(v64)
-	u[1] = byte(v64 >> 8)
-	u[2] = byte(v64 >> 16)
-	u[3] = byte(v64 >> 24)
-	u[4] = byte(v64 >> 32)
-	u[5] = byte(v64 >> 40)
-	u[6] = byte(v64 >> 48)
-	u[7] = byte(v64 >> 56)
+	binary.LittleEndian.PutUint64(b[n:n+8], math.Float64bits(v))
 	return n + 8
 }
 
@@ -1015,13 +1067,7 @@ func SizeFloat32() int {
 
 // Returns the new offset 'n' after marshalling the 32-bit float.
 func MarshalFloat32(n int, b []byte, v float32) int {
-	v32 := math.Float32bits(v)
-	u := b[n : n+4]
-	_ = u[3]
-	u[0] = byte(v32)
-	u[1] = byte(v32 >> 8)
-	u[2] = byte(v32 >> 16)
-	u[3] = byte(v32 >> 24)
+	binary.LittleEndian.PutUint32(b[n:n+4], math.Float32bits(v))
 	return n + 4
 }
 

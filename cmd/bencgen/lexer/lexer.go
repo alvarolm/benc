@@ -196,6 +196,30 @@ type Lexer struct {
 	pos     Position
 	reader  *bufio.Reader
 	Content string
+
+	// pendingComment holds the leading comment lines skipped since the last
+	// emitted token; tokenComment is the leading comment block attached to the
+	// most recently emitted token. trailingComment holds a comment found on the
+	// same line as (i.e. after) the previous token — it belongs to the element
+	// that ended on that line, not the next one.
+	pendingComment  []string
+	tokenComment    string
+	trailingComment string
+}
+
+// Comment returns the leading comment attached to the token most recently
+// returned by Lex (empty if it had none). Multi-line comment blocks are joined
+// with "\n".
+func (l *Lexer) Comment() string {
+	return l.tokenComment
+}
+
+// TrailingComment returns a comment that appeared on the same line as the
+// token preceding the one most recently returned by Lex (empty if none). It is
+// discovered while scanning toward the next token, so it is read after the
+// statement it trails has been parsed.
+func (l *Lexer) TrailingComment() string {
+	return l.trailingComment
 }
 
 func NewLexer(reader io.Reader, content string) *Lexer {
@@ -230,13 +254,43 @@ func highlightError(text string, lineNumber, columnNumber int) string {
 	return highlightedLine + "\n" + arrow
 }
 
+// Lex returns the next token, after recording any leading comment block in
+// l.tokenComment (see Comment) and any same-line trailing comment from the
+// previous token's line in l.trailingComment (see TrailingComment). It wraps
+// lexRaw, which accumulates skipped comment lines.
 func (l *Lexer) Lex() (Position, Token, string) {
+	l.trailingComment = ""
+	pos, tok, lit := l.lexRaw()
+	l.tokenComment = strings.Join(l.pendingComment, "\n")
+	l.pendingComment = l.pendingComment[:0]
+	return pos, tok, lit
+}
+
+func (l *Lexer) lexRaw() (Position, Token, string) {
 	comment := false
+	// A comment is "trailing" (belongs to the previous token's line) when it
+	// starts before any newline in this Lex call; once a newline is seen,
+	// further comments are leading (belong to the upcoming token).
+	trailing := false
+	seenNewline := false
+	var line strings.Builder
+
+	flush := func() {
+		if trailing {
+			l.trailingComment = strings.TrimSpace(line.String())
+		} else {
+			l.pendingComment = append(l.pendingComment, strings.TrimSpace(line.String()))
+		}
+		line.Reset()
+	}
 
 	for {
 		r, _, err := l.reader.ReadRune()
 		if err != nil {
 			if err == io.EOF {
+				if comment {
+					flush()
+				}
 				return l.pos, EOF, ""
 			}
 
@@ -246,10 +300,15 @@ func (l *Lexer) Lex() (Position, Token, string) {
 		l.pos.Column++
 
 		if r == '\n' {
-			comment = false
+			if comment {
+				flush()
+				comment = false
+			}
+			seenNewline = true
 		}
 
 		if comment {
+			line.WriteRune(r)
 			continue
 		}
 
@@ -258,7 +317,20 @@ func (l *Lexer) Lex() (Position, Token, string) {
 			l.resetPosition()
 		case '#':
 			comment = true
+			trailing = !seenNewline
 			continue
+		case '/':
+			r2, _, err2 := l.reader.ReadRune()
+			if err2 == nil && r2 == '/' {
+				l.pos.Column++
+				comment = true
+				trailing = !seenNewline
+				continue
+			}
+			if err2 == nil {
+				l.backup()
+			}
+			return l.pos, ILLEGAL, string(r)
 		case '[':
 			return l.pos, OPEN_BRACKET, "["
 		case ']':

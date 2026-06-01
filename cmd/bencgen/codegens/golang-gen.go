@@ -20,6 +20,7 @@ type GoContainerStmt struct {
 
 	Fields      []parser.Field
 	ReservedIDs []uint16
+	Comment     string
 }
 
 type GoEnumStmt struct {
@@ -28,7 +29,9 @@ type GoEnumStmt struct {
 
 	DefaultName string
 
-	Values []string
+	Values        []string
+	ValueComments []string
+	Comment       string
 }
 
 type GoField struct {
@@ -38,7 +41,21 @@ type GoField struct {
 	PrivateName string
 	DefaultName string
 
-	Type *parser.Type
+	Type    *parser.Type
+	Comment string
+}
+
+// docComment formats a (possibly multi-line) schema comment as Go line
+// comments, each prefixed with indent. Returns "" for an empty comment.
+func docComment(comment, indent string) string {
+	if comment == "" {
+		return ""
+	}
+	var sb strings.Builder
+	for _, line := range strings.Split(comment, "\n") {
+		sb.WriteString(indent + "// " + line + "\n")
+	}
+	return sb.String()
 }
 
 func (f *GoField) AppendUnsafeIfPresent() string {
@@ -173,7 +190,8 @@ func (g *GoGen) ForEachCtrFields(f func(i int)) {
 			PrivateName: utils.ToLower(field.Name),
 			DefaultName: field.Name,
 
-			Type: field.Type,
+			Type:    field.Type,
+			Comment: field.Comment,
 		}
 		f(i)
 	}
@@ -202,8 +220,10 @@ func (g *GoGen) SetEnumStatement(stmt *parser.EnumStmt) {
 		PublicName:  utils.ToUpper(stmt.Name),
 		PrivateName: utils.ToLower(stmt.Name),
 
-		DefaultName: stmt.Name,
-		Values:      stmt.Values,
+		DefaultName:   stmt.Name,
+		Values:        stmt.Values,
+		ValueComments: stmt.ValueComments,
+		Comment:       stmt.Comment,
 	}
 }
 
@@ -245,6 +265,7 @@ func (g *GoGen) SetContainerStatement(stmt *parser.ContainerStmt) {
 		Fields:      fields,
 		DefaultName: stmt.Name,
 		ReservedIDs: stmt.ReservedIDs,
+		Comment:     stmt.Comment,
 	}
 }
 
@@ -398,11 +419,13 @@ func (g *GoGen) GenStruct() string {
 	var sb strings.Builder
 	ctr := g.containerStmt
 
+	sb.WriteString(docComment(ctr.Comment, ""))
 	sb.WriteString(fmt.Sprintf("// Struct - %s\ntype %s struct {\n",
 		ctr.DefaultName, ctr.PublicName))
 
 	g.ForEachCtrFields(func(i int) {
 		field := g.field
+		sb.WriteString(docComment(field.Comment, "    "))
 		sb.WriteString(fmt.Sprintf("    %s %s\n",
 			field.PublicName, utils.BencTypeToGolang(field.Type)))
 	})
@@ -415,10 +438,14 @@ func (g *GoGen) GenEnum() string {
 	var sb strings.Builder
 	enum := g.enumStmt
 
+	sb.WriteString(docComment(enum.Comment, ""))
 	sb.WriteString(fmt.Sprintf("// Enum - %s\ntype %s int\nconst (\n",
 		enum.DefaultName, enum.PublicName))
 
 	g.ForEachEnumValues(func(i int, value string) {
+		if i < len(enum.ValueComments) {
+			sb.WriteString(docComment(enum.ValueComments[i], "    "))
+		}
 		if i == 0 {
 			sb.WriteString(fmt.Sprintf("    %s%s %s = iota\n",
 				enum.PublicName, value, enum.PublicName))
@@ -525,6 +552,20 @@ func (g *GoGen) getSizeFunc() string {
 	}
 }
 
+// isFixedWidthNumeric reports whether a slice/array element of type t can be marshalled
+// with the bulk bstd.Marshal<Type>Slice helpers (which inline the per-element write).
+// These are the multi-byte fixed-width numeric types; their bstd.Size is a no-arg constant
+// and bstd exposes a matching Marshal<Type.String()>Slice helper.
+func isFixedWidthNumeric(t lexer.Token) bool {
+	switch t {
+	case lexer.INT16, lexer.INT32, lexer.INT64,
+		lexer.UINT16, lexer.UINT32, lexer.UINT64,
+		lexer.FLOAT32, lexer.FLOAT64:
+		return true
+	}
+	return false
+}
+
 func makeExternalStructureUpperOrNot(externalStructure string) string {
 	if strings.Contains(externalStructure, ".") {
 		return externalStructure
@@ -626,6 +667,10 @@ func (g *GoGen) getMarshalFunc() string {
 		if field.Type.IsFixedArray() {
 			acc += "[:]"
 		}
+		if isFixedWidthNumeric(field.Type.ChildType.TokenType) {
+			return fmt.Sprintf("bstd.Marshal%sSlice(n, b, %s)",
+				field.Type.ChildType.TokenType.String(), acc)
+		}
 		return fmt.Sprintf("bstd.MarshalSlice(n, b, %s, %s)",
 			acc, g.getElemMarshalFunc(field.Type.ChildType))
 	case field.Type.IsMap:
@@ -662,6 +707,10 @@ func (g *GoGen) getElemMarshalFunc(t *parser.Type) string {
 		elem := "s"
 		if t.IsFixedArray() {
 			elem = "s[:]"
+		}
+		if isFixedWidthNumeric(t.ChildType.TokenType) {
+			return fmt.Sprintf("func (n int, b []byte, s %s) int { return bstd.Marshal%sSlice(n, b, %s) }",
+				utils.BencTypeToGolang(t), t.ChildType.TokenType.String(), elem)
 		}
 		return fmt.Sprintf("func (n int, b []byte, s %s) int { return bstd.MarshalSlice(n, b, %s, %s) }",
 			utils.BencTypeToGolang(t), elem, g.getElemMarshalFunc(t.ChildType))

@@ -11,10 +11,12 @@ import (
 )
 
 type Parser struct {
-	lexer *lexer.Lexer
-	token lexer.Token
-	lit   string
-	pos   lexer.Position
+	lexer           *lexer.Lexer
+	token           lexer.Token
+	lit             string
+	pos             lexer.Position
+	comment         string
+	trailingComment string
 }
 
 func NewParser(reader io.Reader, fileContent string) *Parser {
@@ -28,6 +30,8 @@ func (p *Parser) nextToken() {
 	p.pos = pos
 	p.token = token
 	p.lit = lit
+	p.comment = p.lexer.Comment()
+	p.trailingComment = p.lexer.TrailingComment()
 }
 
 func (p *Parser) match(expected lexer.Token) bool {
@@ -143,6 +147,7 @@ func (p *Parser) parseCustomStmt() Node {
 }
 
 func (p *Parser) parseContainerStmt() Node {
+	comment := p.comment
 	p.expect(lexer.CTR)
 	containerName := p.lit
 	p.expect(lexer.IDENT)
@@ -154,10 +159,11 @@ func (p *Parser) parseContainerStmt() Node {
 	fields := p.parseFields()
 
 	p.expect(lexer.CLOSE_BRACE)
-	return &ContainerStmt{Name: containerName, ReservedIDs: reservedIDs, Fields: fields}
+	return &ContainerStmt{Name: containerName, ReservedIDs: reservedIDs, Fields: fields, Comment: comment}
 }
 
 func (p *Parser) parseEnumStmt() Node {
+	comment := p.comment
 	p.expect(lexer.ENUM)
 	enumName := p.lit
 	p.expect(lexer.IDENT)
@@ -165,10 +171,10 @@ func (p *Parser) parseEnumStmt() Node {
 
 	p.expect(lexer.OPEN_BRACE)
 
-	values := p.parseEnumValues()
+	values, valueComments := p.parseEnumValues()
 
 	p.expect(lexer.CLOSE_BRACE)
-	return &EnumStmt{Name: enumName, Values: values}
+	return &EnumStmt{Name: enumName, Values: values, ValueComments: valueComments, Comment: comment}
 }
 
 func (p *Parser) parseDefineStmt() Node {
@@ -200,12 +206,18 @@ func (p *Parser) parseUseStmt() Node {
 	return &UseStmt{Path: path}
 }
 
-func (p *Parser) parseEnumValues() []string {
-	var values []string
+func (p *Parser) parseEnumValues() ([]string, []string) {
+	var values, comments []string
 	for !p.match(lexer.CLOSE_BRACE) {
+		comment := p.comment
 		values = append(values, p.parseEnumValue())
+		// Fall back to a trailing comment on the value's own line.
+		if comment == "" {
+			comment = p.trailingComment
+		}
+		comments = append(comments, comment)
 	}
-	return values
+	return values, comments
 }
 
 func (p *Parser) parseEnumValue() string {
@@ -255,6 +267,7 @@ func (p *Parser) parseFields() []Field {
 }
 
 func (p *Parser) parseField() Field {
+	comment := p.comment
 	fieldType := p.expectType()
 
 	fieldName := p.lit
@@ -270,7 +283,12 @@ func (p *Parser) parseField() Field {
 	}
 
 	p.expect(lexer.SEMICOLON)
-	return Field{ID: uint16(id), Name: fieldName, Type: fieldType}
+	// A trailing comment on the field's own line (read while scanning to the
+	// next token) documents this field when there was no leading comment.
+	if comment == "" {
+		comment = p.trailingComment
+	}
+	return Field{ID: uint16(id), Name: fieldName, Type: fieldType, Comment: comment}
 }
 
 func (p *Parser) expectType() *Type {
@@ -391,10 +409,13 @@ type (
 		Name        string
 		Fields      []Field
 		ReservedIDs []uint16
+		Comment     string `json:"-"`
 	}
 	EnumStmt struct {
-		Name   string
-		Values []string
+		Name          string
+		Values        []string
+		ValueComments []string `json:"-"`
+		Comment       string   `json:"-"`
 	}
 	DefineStmt struct {
 		Package string
@@ -420,9 +441,10 @@ type (
 		Path string
 	}
 	Field struct {
-		ID   uint16 `json:"id"`
-		Name string
-		Type *Type
+		ID      uint16 `json:"id"`
+		Name    string
+		Type    *Type
+		Comment string `json:"-"`
 	}
 )
 

@@ -16,6 +16,7 @@ A code generator for the **Benc** schema format, ensuring forward and backward c
 - [Importing Other Benc Files](#importing-other-benc-files)
 - [Enums](#enums)
 - [Schema Grammar](#schema-grammar)
+  - [Comments](#comments)
   - [Define](#define)
   - [Fields](#fields)
   - [Type Attributes](#type-attributes)
@@ -283,6 +284,63 @@ ctr Person {
 ## Schema Grammar
 
 A schema consists of the following components:
+
+### Comments
+
+Line comments start with either `#` or `//` and run to the end of the line:
+
+```plaintext
+# this is a comment
+// so is this
+```
+
+A comment attached to a container, field, enum, or enum value is carried through
+to the generated code as a doc comment on the corresponding declaration. A
+comment is attached when it sits **directly above** the declaration (leading) or
+**at the end of the same line** (trailing). When both are present, the leading
+comment wins.
+
+```plaintext
+// A person record.
+ctr Person {
+    // The person's age in years.
+    int age = 1;
+    string name = 2; // the full display name
+}
+
+// Supported colors.
+enum Color {
+    RED,   // the default
+    GREEN,
+    BLUE,
+}
+```
+
+generates (Go):
+
+```go
+// A person record.
+// Struct - Person
+type Person struct {
+    // The person's age in years.
+    Age int
+    // the full display name
+    Name string
+}
+
+// Supported colors.
+// Enum - Color
+type Color int
+const (
+    // the default
+    ColorRED Color = iota
+    ColorGREEN
+    ColorBLUE
+)
+```
+
+Comments are ignored by the [BCD](#breaking-changes-detector-bcd): editing them
+never triggers a breaking-change error.
 
 ### Define
 

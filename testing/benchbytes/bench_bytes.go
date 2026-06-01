@@ -236,7 +236,7 @@ func (fixedInts *FixedInts) Marshal(b []byte) {
 func (fixedInts *FixedInts) NestedMarshal(tn int, b []byte, id uint16) (n int) {
 	n = bgenimpl.MarshalTag(tn, b, bgenimpl.Container, id)
 	n = bgenimpl.MarshalTag(n, b, bgenimpl.ArrayMap, 1)
-	n = bstd.MarshalSlice(n, b, fixedInts.Data[:], bstd.MarshalInt32)
+	n = bstd.MarshalInt32Slice(n, b, fixedInts.Data[:])
 
 	n += 2
 	b[n-2] = 1
@@ -247,7 +247,7 @@ func (fixedInts *FixedInts) NestedMarshal(tn int, b []byte, id uint16) (n int) {
 // MarshalPlain - FixedInts
 func (fixedInts *FixedInts) MarshalPlain(tn int, b []byte) (n int) {
 	n = tn
-	n = bstd.MarshalSlice(n, b, fixedInts.Data[:], bstd.MarshalInt32)
+	n = bstd.MarshalInt32Slice(n, b, fixedInts.Data[:])
 	return n
 }
 
@@ -330,7 +330,7 @@ func (dynInts *DynInts) Marshal(b []byte) {
 func (dynInts *DynInts) NestedMarshal(tn int, b []byte, id uint16) (n int) {
 	n = bgenimpl.MarshalTag(tn, b, bgenimpl.Container, id)
 	n = bgenimpl.MarshalTag(n, b, bgenimpl.ArrayMap, 1)
-	n = bstd.MarshalSlice(n, b, dynInts.Data, bstd.MarshalInt32)
+	n = bstd.MarshalInt32Slice(n, b, dynInts.Data)
 
 	n += 2
 	b[n-2] = 1
@@ -341,7 +341,7 @@ func (dynInts *DynInts) NestedMarshal(tn int, b []byte, id uint16) (n int) {
 // MarshalPlain - DynInts
 func (dynInts *DynInts) MarshalPlain(tn int, b []byte) (n int) {
 	n = tn
-	n = bstd.MarshalSlice(n, b, dynInts.Data, bstd.MarshalInt32)
+	n = bstd.MarshalInt32Slice(n, b, dynInts.Data)
 	return n
 }
 

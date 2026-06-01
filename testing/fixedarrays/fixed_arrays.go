@@ -189,7 +189,7 @@ func (shapes *Shapes) NestedMarshal(tn int, b []byte, id uint16) (n int) {
 	n = bgenimpl.MarshalTag(n, b, bgenimpl.ArrayMap, 1)
 	n = bstd.MarshalFixedByteArray(n, b, shapes.Hash[:])
 	n = bgenimpl.MarshalTag(n, b, bgenimpl.ArrayMap, 2)
-	n = bstd.MarshalSlice(n, b, shapes.Quad[:], bstd.MarshalInt32)
+	n = bstd.MarshalInt32Slice(n, b, shapes.Quad[:])
 	n = bgenimpl.MarshalTag(n, b, bgenimpl.ArrayMap, 3)
 	n = bstd.MarshalSlice(n, b, shapes.Labels[:], bstd.MarshalString)
 	n = bgenimpl.MarshalTag(n, b, bgenimpl.ArrayMap, 4)
@@ -197,7 +197,7 @@ func (shapes *Shapes) NestedMarshal(tn int, b []byte, id uint16) (n int) {
 	n = bgenimpl.MarshalTag(n, b, bgenimpl.ArrayMap, 5)
 	n = bstd.MarshalSlice(n, b, shapes.Aliases[:], nameMarshal)
 	n = bgenimpl.MarshalTag(n, b, bgenimpl.ArrayMap, 6)
-	n = bstd.MarshalSlice(n, b, shapes.Matrix, func(n int, b []byte, s [3]int32) int { return bstd.MarshalSlice(n, b, s[:], bstd.MarshalInt32) })
+	n = bstd.MarshalSlice(n, b, shapes.Matrix, func(n int, b []byte, s [3]int32) int { return bstd.MarshalInt32Slice(n, b, s[:]) })
 
 	n += 2
 	b[n-2] = 1
@@ -209,11 +209,11 @@ func (shapes *Shapes) NestedMarshal(tn int, b []byte, id uint16) (n int) {
 func (shapes *Shapes) MarshalPlain(tn int, b []byte) (n int) {
 	n = tn
 	n = bstd.MarshalFixedByteArray(n, b, shapes.Hash[:])
-	n = bstd.MarshalSlice(n, b, shapes.Quad[:], bstd.MarshalInt32)
+	n = bstd.MarshalInt32Slice(n, b, shapes.Quad[:])
 	n = bstd.MarshalSlice(n, b, shapes.Labels[:], bstd.MarshalString)
 	n = bstd.MarshalSlice(n, b, shapes.Points[:], func(n int, b []byte, s Point) int { return s.MarshalPlain(n, b) })
 	n = bstd.MarshalSlice(n, b, shapes.Aliases[:], nameMarshal)
-	n = bstd.MarshalSlice(n, b, shapes.Matrix, func(n int, b []byte, s [3]int32) int { return bstd.MarshalSlice(n, b, s[:], bstd.MarshalInt32) })
+	n = bstd.MarshalSlice(n, b, shapes.Matrix, func(n int, b []byte, s [3]int32) int { return bstd.MarshalInt32Slice(n, b, s[:]) })
 	return n
 }
 
